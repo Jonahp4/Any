@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import net.kyori.adventure.text.Component;
 import org.bukkit.command.CommandSender;
 import org.jspecify.annotations.Nullable;
@@ -88,10 +89,8 @@ final class DupesCommand implements BasicCommand {
             boolean value = enable != null ? enable : (target.equals(ALL) ? !allOn : !managed.desired());
             this.plugin.setEnabled(managed, value);
             sender.sendMessage(this.line(managed));
-            for (String problem : this.plugin.problems(managed)) {
-                if (managed.desired()) {
-                    sender.sendMessage(text("  ! " + problem, YELLOW));
-                }
+            if (managed.desired()) {
+                this.problems(sender, managed.dupe());
             }
         }
     }
@@ -126,15 +125,24 @@ final class DupesCommand implements BasicCommand {
             }
             sender.sendMessage(this.line(managed));
             if (managed.desired() != managed.live()) {
-                sender.sendMessage(text("  ! Paper currently has " + managed.live() + "; it will be re-applied by the watchdog", YELLOW));
+                sender.sendMessage(text("  ! Paper is currently using " + managed.live()
+                    + " (watchdog-interval-ticks is 0?); run /dupes reload to re-apply", YELLOW));
             }
             if (managed.desired()) {
-                for (String problem : this.plugin.problems(managed)) {
-                    sender.sendMessage(text("  ! " + problem, YELLOW));
+                this.problems(sender, dupe);
+                Set<String> blockers = this.plugin.possibleBlockers(dupe);
+                if (!blockers.isEmpty()) {
+                    sender.sendMessage(text("  Listening to events that could block it: " + String.join(", ", blockers), GRAY));
                 }
             }
         }
         sender.sendMessage(text("/dupes <piston|tripwire|gravity|all> [on|off|toggle]  ·  /dupes reload", GRAY));
+    }
+
+    private void problems(CommandSender sender, Dupe dupe) {
+        for (String problem : this.plugin.problems(dupe)) {
+            sender.sendMessage(text("  ! " + problem, YELLOW));
+        }
     }
 
     private Component line(ManagedSwitch managed) {

@@ -29,15 +29,20 @@ class ManagedSwitchTest {
         return GlobalConfiguration.get().unsupportedSettings.allowPistonDuplication;
     }
 
+    /**
+     * What /paper reload and Bukkit's /reload do in Paper 1.21.11: build a brand-new section object
+     * from paper-global.yml and swap it into the existing root (InnerClassInstanceFactory#complete).
+     */
     private void paperReload(boolean fileValue) {
-        // What Configurations.reloader does: load the file into the existing objects.
-        this.config.unsupportedSettings.allowPistonDuplication = fileValue;
+        GlobalConfiguration.UnsupportedSettings fresh = this.config.new UnsupportedSettings();
+        fresh.allowPistonDuplication = fileValue;
+        this.config.unsupportedSettings = fresh;
     }
 
     @Test
     void enableRemembersPaperValue() {
         this.piston.desired(true);
-        assertFalse(this.piston.enforce(), "first apply is not a correction");
+        assertFalse(this.piston.enforce(), "first apply is not a reload");
         assertTrue(this.paper());
         assertFalse(this.piston.paperValue());
 
@@ -46,25 +51,53 @@ class ManagedSwitchTest {
     }
 
     @Test
-    void reapplyAfterPaperReload() {
+    void reappliesAfterPaperReload() {
         this.piston.desired(true);
         this.piston.enforce();
 
         this.paperReload(false);
-        assertTrue(this.piston.enforce(), "reset by reload must be reported");
+        assertFalse(this.paper());
+        assertTrue(this.piston.enforce(), "reset by a reload must be reported");
         assertTrue(this.paper());
         assertFalse(this.piston.enforce(), "steady state is quiet");
         assertTrue(this.paper());
     }
 
     @Test
+    void reloadThatAlreadyMatchesIsQuiet() {
+        this.piston.desired(true);
+        this.piston.enforce();
+
+        this.paperReload(true); // admin also set it in paper-global.yml
+        assertFalse(this.piston.enforce());
+        assertTrue(this.paper());
+        assertTrue(this.piston.paperValue());
+
+        this.piston.restore();
+        assertTrue(this.paper(), "restoring hands back the file value, which is true");
+    }
+
+    @Test
     void steadyStateDoesNotWrite() {
         this.piston.desired(true);
         this.piston.enforce();
+        GlobalConfiguration.UnsupportedSettings section = this.config.unsupportedSettings;
         for (int i = 0; i < 1000; i++) {
             assertFalse(this.piston.enforce());
         }
         assertTrue(this.paper());
+        assertTrue(section == this.config.unsupportedSettings);
+    }
+
+    @Test
+    void foreignInPlaceWriteIsCorrectedWithoutForgettingPaperValue() {
+        this.piston.desired(true);
+        this.piston.enforce();
+
+        this.config.unsupportedSettings.allowPistonDuplication = false; // some other plugin
+        assertFalse(this.piston.enforce(), "not a reload");
+        assertTrue(this.paper());
+        assertFalse(this.piston.paperValue());
     }
 
     @Test
@@ -73,7 +106,7 @@ class ManagedSwitchTest {
         this.piston.enforce();
 
         this.piston.desired(false);
-        assertFalse(this.piston.enforce(), "our own change is not an external reset");
+        assertFalse(this.piston.enforce(), "our own change is not a reload");
         assertFalse(this.paper());
         assertFalse(this.piston.paperValue(), "paper value must stay what paper-global.yml had");
 
@@ -99,15 +132,55 @@ class ManagedSwitchTest {
     }
 
     @Test
+    void bukkitReloadLoadsConfigBeforeDisableSoRestoreKeepsFreshValue() {
+        // Plugin forces true over a file value of false...
+        this.piston.desired(true);
+        this.piston.enforce();
+        assertFalse(this.piston.paperValue());
+
+        // ...then the admin edits the file to true and runs /reload: CraftServer#reload loads Paper's
+        // config first and only then calls onDisable.
+        this.paperReload(true);
+        this.piston.restore();
+        assertTrue(this.paper(), "must not overwrite the freshly loaded file value with the stale snapshot");
+    }
+
+    @Test
+    void bukkitReloadWithUnchangedFileLeavesFileValue() {
+        this.piston.desired(true);
+        this.piston.enforce();
+
+        this.paperReload(false);
+        this.piston.restore();
+        assertFalse(this.paper());
+    }
+
+    @Test
+    void unloadWithoutReloadRestores() {
+        // e.g. a plugin manager unloading DupeEnabler
+        this.piston.desired(true);
+        this.piston.enforce();
+        this.piston.restore();
+        assertFalse(this.paper());
+    }
+
+    @Test
     void restoreLeavesForeignChangesAlone() {
         this.piston.desired(true);
         this.piston.enforce();
 
-        this.paperReload(false); // someone else changed it after our last write
+        this.config.unsupportedSettings.allowPistonDuplication = false; // changed in place after our write
+        this.config.unsupportedSettings.allowPistonDuplication = true;
+        this.piston.restore();
+        assertFalse(this.paper(), "value still ours, so it is restored");
+
+        this.piston.enforce();
+        this.config.unsupportedSettings.allowPistonDuplication = false; // foreign value at disable time
+        this.piston.desired(true);
         this.piston.restore();
         assertFalse(this.paper());
 
-        this.paperReload(true);
+        this.config.unsupportedSettings.allowPistonDuplication = true;
         this.piston.restore(); // restore after restore is a no-op
         assertTrue(this.paper());
     }
@@ -120,7 +193,7 @@ class ManagedSwitchTest {
 
         this.paperReload(true); // file changed while plugin was disabled
         this.piston.desired(false);
-        this.piston.enforce();
+        assertFalse(this.piston.enforce(), "first apply after re-enable is not a reload");
         assertFalse(this.paper());
         this.piston.restore();
         assertTrue(this.paper());

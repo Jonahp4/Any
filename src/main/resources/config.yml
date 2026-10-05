@@ -21,9 +21,10 @@ dupes:
   gravity: false
 
 # '/paper reload' and '/reload' make Paper re-read paper-global.yml, which would switch the dupes
-# back off. Every this-many ticks the plugin checks and re-applies the values above (it only reads
-# a few booleans, so the cost is effectively zero). 20 ticks = 1 second. 0 = never re-check.
-watchdog-interval-ticks: 20
+# back off. Every this-many ticks the plugin checks and re-applies the values above. The check runs
+# before the worlds tick and only reads a few fields (tens of nanoseconds), so with 1 no piston or
+# hook update ever sees Paper's value, even right after a reload. 0 = never re-check.
+watchdog-interval-ticks: 1
 
 # When the plugin is disabled or removed, give Paper back its own values from paper-global.yml.
 restore-on-disable: true

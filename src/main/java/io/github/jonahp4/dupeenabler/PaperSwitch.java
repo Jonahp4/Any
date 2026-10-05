@@ -14,8 +14,9 @@ import java.lang.reflect.Field;
  * it runs, so writing one takes effect immediately and adds no per-tick or per-event cost: Paper
  * simply takes its untouched vanilla branch.
  *
- * <p>Only the handles are cached, never the config objects: {@code /paper reload} loads into the
- * live config in place and may swap section objects, so every access walks the path again.
+ * <p>Only the handles are cached, never the config objects: {@code /paper reload} (and Bukkit's
+ * {@code /reload}) replaces the section objects with freshly loaded ones, so every access walks the
+ * path again. That replacement is also what {@link ManagedSwitch} uses to notice a reload.
  */
 final class PaperSwitch {
 
@@ -58,14 +59,23 @@ final class PaperSwitch {
     }
 
     boolean get() {
-        return (boolean) this.flag.get(this.section());
+        return this.get(this.section());
     }
 
     void set(boolean value) {
-        this.flag.set(this.section(), value);
+        this.set(this.section(), value);
     }
 
-    private Object section() {
+    boolean get(Object section) {
+        return (boolean) this.flag.get(section);
+    }
+
+    void set(Object section, boolean value) {
+        this.flag.set(section, value);
+    }
+
+    /** The live section object holding this switch. Paper swaps it for a new one on every config reload. */
+    Object section() {
         try {
             Object config = (Object) this.root.invokeExact();
             if (config == null) {
