@@ -1,0 +1,29 @@
+# DupeEnabler
+#
+# Turns Paper's own "unsupported-settings" dupe switches on at runtime, so Paper runs the
+# untouched vanilla code and contraptions work exactly like in singleplayer. Nothing is
+# hooked or emulated: no listeners, no per-tick work, no restart needed.
+#
+# Change these in-game with /dupes (permission: dupeenabler.admin) or edit and run /dupes reload.
+
+dupes:
+  # TNT duping, plus carpet and rail duping, with pistons.
+  # Same as paper-global.yml -> unsupported-settings.allow-piston-duplication
+  piston: true
+
+  # Tripwire hook duping.
+  # Same as paper-global.yml -> unsupported-settings.skip-tripwire-hook-placement-validation
+  # (String duping was removed from vanilla itself in 1.21.2, so no server can offer it.)
+  tripwire: true
+
+  # Sand / gravel / concrete powder (any falling block) duping through end portals.
+  # Same as paper-global.yml -> unsupported-settings.allow-unsafe-end-portal-teleportation
+  gravity: false
+
+# '/paper reload' and '/reload' make Paper re-read paper-global.yml, which would switch the dupes
+# back off. Every this-many ticks the plugin checks and re-applies the values above (it only reads
+# a few booleans, so the cost is effectively zero). 20 ticks = 1 second. 0 = never re-check.
+watchdog-interval-ticks: 20
+
+# When the plugin is disabled or removed, give Paper back its own values from paper-global.yml.
+restore-on-disable: true

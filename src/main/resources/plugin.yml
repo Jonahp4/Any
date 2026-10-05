@@ -1,0 +1,10 @@
+name: DupeEnabler
+version: '${version}'
+main: io.github.jonahp4.dupeenabler.DupeEnablerPlugin
+description: '${description}'
+api-version: '1.21.11'
+authors: [jonahp4]
+permissions:
+  dupeenabler.admin:
+    description: Use /dupes to view and toggle duping
+    default: op
