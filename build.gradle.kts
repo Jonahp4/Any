@@ -4,7 +4,7 @@ plugins {
 
 group = "io.github.jonahp4"
 version = "1.0.0"
-description = "Re-enables vanilla piston (TNT/carpet/rail) and tripwire (string) duping on Paper"
+description = "Re-enables vanilla piston (TNT/carpet/rail), tripwire hook and gravity block duping on Paper"
 
 repositories {
     mavenCentral()
