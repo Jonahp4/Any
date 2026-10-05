@@ -3,7 +3,6 @@ package io.github.jonahp4.dupeenabler;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
-import java.lang.invoke.VarHandle;
 import java.lang.reflect.Field;
 
 /**
@@ -13,6 +12,9 @@ import java.lang.reflect.Field;
  * <p>Paper's patched vanilla code reads these switches straight off the config object every time
  * it runs, so writing one takes effect immediately and adds no per-tick or per-event cost: Paper
  * simply takes its untouched vanilla branch.
+ *
+ * <p>All handles are adapted to exact erased types once, so each access is a direct
+ * {@code invokeExact} the JIT can inline: no reflection, boxing or allocation per call.
  *
  * <p>Only the handles are cached, never the config objects: {@code /paper reload} (and Bukkit's
  * {@code /reload}) replaces the section objects with freshly loaded ones, so every access walks the
@@ -25,13 +27,15 @@ final class PaperSwitch {
     private final String path;
     private final MethodHandle root;    // () -> GlobalConfiguration, erased to Object
     private final MethodHandle section; // (GlobalConfiguration) -> section, erased to (Object)Object
-    private final VarHandle flag;       // boolean field on the section
+    private final MethodHandle getter;  // (section) -> boolean, erased to (Object)boolean
+    private final MethodHandle setter;  // (section, boolean) -> void, erased to (Object,boolean)void
 
-    private PaperSwitch(String path, MethodHandle root, MethodHandle section, VarHandle flag) {
+    private PaperSwitch(String path, MethodHandle root, MethodHandle section, MethodHandle getter, MethodHandle setter) {
         this.path = path;
         this.root = root;
         this.section = section;
-        this.flag = flag;
+        this.getter = getter;
+        this.setter = setter;
     }
 
     /**
@@ -48,9 +52,15 @@ final class PaperSwitch {
         Field sectionField0 = global.getField(sectionField);
         MethodHandle section = lookup.unreflectGetter(sectionField0)
             .asType(MethodType.methodType(Object.class, Object.class));
-        VarHandle flag = lookup.findVarHandle(sectionField0.getType(), flagField, boolean.class);
+        // Take the section type from the field, never by simple name: WorldConfiguration has its own
+        // UnsupportedSettings class too.
+        Class<?> sectionType = sectionField0.getType();
+        MethodHandle getter = lookup.findGetter(sectionType, flagField, boolean.class)
+            .asType(MethodType.methodType(boolean.class, Object.class));
+        MethodHandle setter = lookup.findSetter(sectionType, flagField, boolean.class)
+            .asType(MethodType.methodType(void.class, Object.class, boolean.class));
 
-        return new PaperSwitch(sectionField + "." + flagField, root, section, flag);
+        return new PaperSwitch(sectionField + "." + flagField, root, section, getter, setter);
     }
 
     /** Java field path of the setting, e.g. {@code unsupportedSettings.allowPistonDuplication}. */
@@ -67,11 +77,23 @@ final class PaperSwitch {
     }
 
     boolean get(Object section) {
-        return (boolean) this.flag.get(section);
+        try {
+            return (boolean) this.getter.invokeExact(section);
+        } catch (RuntimeException | Error e) {
+            throw e;
+        } catch (Throwable t) {
+            throw new IllegalStateException("Could not read " + this.path, t);
+        }
     }
 
     void set(Object section, boolean value) {
-        this.flag.set(section, value);
+        try {
+            this.setter.invokeExact(section, value);
+        } catch (RuntimeException | Error e) {
+            throw e;
+        } catch (Throwable t) {
+            throw new IllegalStateException("Could not write " + this.path, t);
+        }
     }
 
     /** The live section object holding this switch. Paper swaps it for a new one on every config reload. */
